@@ -1,0 +1,246 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title>Interactive Quadratic Plot</title>
+<style>
+    body { margin: 0; padding: 0; }
+    canvas { border: 1px solid #000; display: block; margin: 20px auto; }
+</style>
+</head>
+<body>
+<canvas id="quadCanvas" width="800" height="600"></canvas>
+
+<script>
+(function() {
+    // Canvas and graph setup
+    const canvas = document.getElementById('quadCanvas');
+    const ctx = canvas.getContext('2d');
+    const W = canvas.width, H = canvas.height;
+    const graphHeight = 450;          // Graph area height (top portion of canvas)
+    const originX = W / 2;            // Origin at center of graph area
+    const originY = graphHeight / 2;
+    const domainX = 10, domainY = 10; // Logical range for x and y
+    const scaleX = originX / domainX; // px per x-unit
+    const scaleY = originY / domainY; // px per y-unit
+
+    // Quadratic parameters (with initial values)
+    let a = 1, b = 0, c = 0;
+    // Slider ranges
+    const aRange = {min: -5, max: 5};
+    const bRange = {min: -10, max: 10};
+    const cRange = {min: -10, max: 10};
+
+    // Slider UI positions
+    const trackX1 = 100, trackX2 = 700; // horizontal span of each slider
+    const aY = graphHeight + 30;        // vertical positions of slider tracks
+    const bY = graphHeight + 70;
+    const cY = graphHeight + 110;
+    const knobRadius = 8;
+
+    // Utility to map slider value to pixel x-coordinate
+    function valueToX(val, min, max) {
+        const percent = (val - min) / (max - min);
+        return trackX1 + percent * (trackX2 - trackX1);
+    }
+    // Utility to map pixel x back to slider value
+    function xToValue(x, min, max) {
+        let percent = (x - trackX1) / (trackX2 - trackX1);
+        percent = Math.max(0, Math.min(1, percent)); // clamp to [0,1]
+        return min + percent * (max - min);
+    }
+    // Initial knob positions
+    let aX = valueToX(a, aRange.min, aRange.max);
+    let bX = valueToX(b, bRange.min, bRange.max);
+    let cX = valueToX(c, cRange.min, cRange.max);
+
+    // Dragging state: null or 'a'/'b'/'c'
+    let dragging = null;
+
+    // Mouse event handlers to manage dragging
+    canvas.addEventListener('mousedown', function(evt) {
+        const rect = canvas.getBoundingClientRect();
+        const mx = evt.clientX - rect.left;
+        const my = evt.clientY - rect.top;
+        // Check distance from each knob
+        if (Math.hypot(mx - aX, my - aY) < knobRadius) {
+            dragging = 'a';
+        } else if (Math.hypot(mx - bX, my - bY) < knobRadius) {
+            dragging = 'b';
+        } else if (Math.hypot(mx - cX, my - cY) < knobRadius) {
+            dragging = 'c';
+        }
+    });
+    canvas.addEventListener('mousemove', function(evt) {
+        if (!dragging) return; // only proceed if dragging a knob
+        const rect = canvas.getBoundingClientRect();
+        const mx = evt.clientX - rect.left;
+        // Update the parameter value based on mouse x, then reposition knob
+        if (dragging === 'a') {
+            a = xToValue(mx, aRange.min, aRange.max);
+            aX = valueToX(a, aRange.min, aRange.max);
+        } else if (dragging === 'b') {
+            b = xToValue(mx, bRange.min, bRange.max);
+            bX = valueToX(b, bRange.min, bRange.max);
+        } else if (dragging === 'c') {
+            c = xToValue(mx, cRange.min, cRange.max);
+            cX = valueToX(c, cRange.min, cRange.max);
+        }
+        draw(); // Redraw everything after change
+    });
+    canvas.addEventListener('mouseup', function(evt) {
+        dragging = null; // stop dragging
+    });
+    canvas.addEventListener('mouseleave', function(evt) {
+        dragging = null;
+    });
+
+    // Main draw routine
+    function draw() {
+        // Clear entire canvas
+        ctx.clearRect(0, 0, W, H);
+
+        // Draw axes
+        ctx.strokeStyle = '#000';
+        ctx.lineWidth = 1;
+        // x-axis
+        ctx.beginPath();
+        ctx.moveTo(0, originY);
+        ctx.lineTo(W, originY);
+        ctx.stroke();
+        // y-axis
+        ctx.beginPath();
+        ctx.moveTo(originX, 0);
+        ctx.lineTo(originX, graphHeight);
+        ctx.stroke();
+
+        // Draw ticks and labels on axes
+        ctx.fillStyle = '#000';
+        ctx.font = '12px sans-serif';
+        // X-axis ticks from -domainX to +domainX
+        for (let i = -domainX; i <= domainX; i++) {
+            const x = originX + i * scaleX;
+            if (x >= 0 && x <= W) {
+                ctx.beginPath();
+                ctx.moveTo(x, originY - 5);
+                ctx.lineTo(x, originY + 5);
+                ctx.stroke();
+                if (i !== 0) {
+                    ctx.fillText(i.toString(), x - 6, originY + 15);
+                }
+            }
+        }
+        // Y-axis ticks from -domainY to +domainY
+        for (let j = -domainY; j <= domainY; j++) {
+            const y = originY - j * scaleY;
+            if (y >= 0 && y <= graphHeight) {
+                ctx.beginPath();
+                ctx.moveTo(originX - 5, y);
+                ctx.lineTo(originX + 5, y);
+                ctx.stroke();
+                if (j !== 0) {
+                    ctx.fillText(j.toString(), originX + 8, y + 4);
+                }
+            }
+        }
+        // Axis labels
+        ctx.fillText('x', W - 10, originY - 10);
+        ctx.fillText('y', originX + 10, 10);
+
+        // Draw the parabola y = ax^2 + bx + c (blue)
+        // Clip to graph area so it doesn't spill into the sliders
+        ctx.save();
+        ctx.beginPath();
+        ctx.rect(0, 0, W, graphHeight);
+        ctx.clip();
+        ctx.strokeStyle = 'blue';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        let first = true;
+        for (let px = 0; px <= W; px++) {
+            const x = (px - originX) / scaleX;
+            const y = a * x * x + b * x + c;
+            const py = originY - y * scaleY;
+            if (first) {
+                ctx.moveTo(px, py);
+                first = false;
+            } else {
+                ctx.lineTo(px, py);
+            }
+        }
+        ctx.stroke();
+        ctx.restore();
+
+        // If a != 0, draw vertex (red) and axis of symmetry (dashed gray)
+        if (a !== 0) {
+            const xv = -b / (2 * a);
+            const yv = a * xv * xv + b * xv + c;
+            const pxv = originX + xv * scaleX;
+            const pyv = originY - yv * scaleY;
+            // Axis of symmetry line
+            ctx.strokeStyle = '#888';
+            ctx.setLineDash([5, 5]);
+            ctx.beginPath();
+            ctx.moveTo(pxv, 0);
+            ctx.lineTo(pxv, graphHeight);
+            ctx.stroke();
+            ctx.setLineDash([]); // reset to solid lines
+            // Vertex point
+            ctx.fillStyle = 'red';
+            ctx.beginPath();
+            ctx.arc(pxv, pyv, 5, 0, 2 * Math.PI);
+            ctx.fill();
+            // Vertex label
+            ctx.fillStyle = 'black';
+            ctx.fillText(`(${xv.toFixed(2)}, ${yv.toFixed(2)})`, pxv + 8, pyv - 8);
+        }
+
+        // Draw sliders for a, b, c
+        ctx.font = '14px sans-serif';
+        ctx.fillStyle = '#000';
+        // Slider A
+        ctx.fillText(`a = ${a.toFixed(2)}`, 10, aY + 5);
+        ctx.strokeStyle = '#000';
+        ctx.beginPath();
+        ctx.moveTo(trackX1, aY);
+        ctx.lineTo(trackX2, aY);
+        ctx.stroke();
+        ctx.fillStyle = 'lightgray';
+        ctx.beginPath();
+        ctx.arc(aX, aY, knobRadius, 0, 2 * Math.PI);
+        ctx.fill();
+        ctx.stroke();
+        // Slider B
+        ctx.fillStyle = '#000';
+        ctx.fillText(`b = ${b.toFixed(2)}`, 10, bY + 5);
+        ctx.strokeStyle = '#000';
+        ctx.beginPath();
+        ctx.moveTo(trackX1, bY);
+        ctx.lineTo(trackX2, bY);
+        ctx.stroke();
+        ctx.fillStyle = 'lightgray';
+        ctx.beginPath();
+        ctx.arc(bX, bY, knobRadius, 0, 2 * Math.PI);
+        ctx.fill();
+        ctx.stroke();
+        // Slider C
+        ctx.fillStyle = '#000';
+        ctx.fillText(`c = ${c.toFixed(2)}`, 10, cY + 5);
+        ctx.strokeStyle = '#000';
+        ctx.beginPath();
+        ctx.moveTo(trackX1, cY);
+        ctx.lineTo(trackX2, cY);
+        ctx.stroke();
+        ctx.fillStyle = 'lightgray';
+        ctx.beginPath();
+        ctx.arc(cX, cY, knobRadius, 0, 2 * Math.PI);
+        ctx.fill();
+        ctx.stroke();
+    }
+
+    // Initial draw
+    draw();
+})();
+</script>
+</body>
+</html>
